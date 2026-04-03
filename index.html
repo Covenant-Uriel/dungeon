@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>元氣騎士風格長廊迷宮版</title>
+<title>元氣騎士風格長廊迷宮修正版</title>
 <style>
 body { margin:0; background:#222; font-family:sans-serif; overflow:hidden; }
 canvas { display:block; margin:auto; background:#333; }
@@ -32,25 +32,28 @@ const roomHeight = tilePerRoom*tileSize;
 
 let rooms = [];
 
-// --- 生成房間和長廊 ---
+// --- 生成房間，保留中心空地 ---
 function generateRoom(){
     let tiles = Array(tilePerRoom).fill(0).map(()=>Array(tilePerRoom).fill(1));
-    // 房間內隨機空地
-    for(let y=4;y<tilePerRoom-4;y++){
-        for(let x=4;x<tilePerRoom-4;x++){
-            if(Math.random()<0.35) tiles[y][x]=0;
+    let start = 4, end = tilePerRoom-5;
+    for(let y=start;y<=end;y++){
+        for(let x=start;x<=end;x++){
+            tiles[y][x] = 0; // 中心安全空地
         }
     }
     return tiles;
 }
 
-// --- 生成長廊 ---
-function generateCorridor(tiles,x1,y1,x2,y2){
+// --- 生成長廊，連通房間 ---
+function generateCorridor(fromRoom, toRoom){
+    let x1=fromRoom.center.x, y1=fromRoom.center.y;
+    let x2=toRoom.center.x, y2=toRoom.center.y;
     let cx=x1, cy=y1;
     while(cx!==x2 || cy!==y2){
-        if(cx!==x2){ cx += (x2>cx)?1:-1; tiles[cy][cx]=0; }
-        if(cy!==y2){ cy += (y2>cy)?1:-1; tiles[cy][cx]=0; }
+        if(cx!==x2){ cx += (x2>cx)?1:-1; fromRoom.tiles[cy][cx]=0; }
+        if(cy!==y2){ cy += (y2>cy)?1:-1; fromRoom.tiles[cy][cx]=0; }
     }
+    toRoom.tiles[y2][x2] = 0;
 }
 
 // --- 生成所有房間 ---
@@ -66,18 +69,8 @@ for(let y=0;y<roomRows;y++){
 for(let y=0;y<roomRows;y++){
     for(let x=0;x<roomCols;x++){
         let room = rooms[y][x];
-        // 右長廊
-        if(x<roomCols-1){
-            let target = rooms[y][x+1];
-            generateCorridor(room.tiles, room.center.x, room.center.y, tilePerRoom-1, room.center.y);
-            generateCorridor(target.tiles,0,target.center.y, target.center.x, target.center.y);
-        }
-        // 下長廊
-        if(y<roomRows-1){
-            let target = rooms[y+1][x];
-            generateCorridor(room.tiles, room.center.x, room.center.y, room.center.x, tilePerRoom-1);
-            generateCorridor(target.tiles, target.center.x,0, target.center.x, target.center.y);
-        }
+        if(x<roomCols-1){ generateCorridor(room, rooms[y][x+1]); }
+        if(y<roomRows-1){ generateCorridor(room, rooms[y+1][x]); }
     }
 }
 
@@ -92,40 +85,7 @@ let currentRoom = rooms[currentRoomY][currentRoomX];
 let player={x:currentRoom.center.x*tileSize, y:currentRoom.center.y*tileSize, size:20, color:'cyan', speed:3, hp:10, weapon:'pistol', bullets:[], fireTimer:0};
 currentRoom.explored=true;
 
-// --- 敵人和道具生成保持 ---
-function spawnEnemies(room){/*同前*/}
-function spawnItems(room){/*同前*/}
-spawnEnemies(currentRoom);
-spawnItems(currentRoom);
-
-// --- 玩家移動 ---
-function movePlayer(dx,dy){
-    let nx=player.x+dx, ny=player.y+dy;
-    if(!checkCollision(nx,player.y,player.size)) player.x=nx;
-    if(!checkCollision(player.x,ny,player.size)) player.y=ny;
-
-    // 房間切換判斷（碰到邊界且長廊空格）
-    if(player.x<0 && currentRoomX>0 && currentRoom.tiles[player.y/tileSize|0][tilePerRoom-1]===0){
-        currentRoomX--; currentRoom=rooms[currentRoomY][currentRoomX]; player.x=roomWidth-player.size-1; safePlayerInRoom();
-    }
-    if(player.x>roomWidth-player.size && currentRoomX<roomCols-1 && currentRoom.tiles[player.y/tileSize|0][0]===0){
-        currentRoomX++; currentRoom=rooms[currentRoomY][currentRoomX]; player.x=1; safePlayerInRoom();
-    }
-    if(player.y<0 && currentRoomY>0 && currentRoom.tiles[tilePerRoom-1][player.x/tileSize|0]===0){
-        currentRoomY--; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=roomHeight-player.size-1; safePlayerInRoom();
-    }
-    if(player.y>roomHeight-player.size && currentRoomY<roomRows-1 && currentRoom.tiles[0][player.x/tileSize|0]===0){
-        currentRoomY++; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=1; safePlayerInRoom();
-    }
-}
-
-function safePlayerInRoom(){
-    let safePos={x:currentRoom.center.x*tileSize, y:currentRoom.center.y*tileSize};
-    player.x=safePos.x; player.y=safePos.y;
-    currentRoom.explored=true;
-    spawnEnemies(currentRoom); spawnItems(currentRoom);
-}
-
+// --- 控制碰撞 ---
 function checkCollision(x,y,size){
     let left=Math.floor(x/tileSize), right=Math.floor((x+size-1)/tileSize);
     let top=Math.floor(y/tileSize), bottom=Math.floor((y+size-1)/tileSize);
@@ -136,6 +96,27 @@ function checkCollision(x,y,size){
         }
     }
     return false;
+}
+
+// --- 玩家移動 ---
+function movePlayer(dx,dy){
+    let nx=player.x+dx, ny=player.y+dy;
+    if(!checkCollision(nx,player.y,player.size)) player.x=nx;
+    if(!checkCollision(player.x,ny,player.size)) player.y=ny;
+
+    // 房間切換
+    if(player.x<0 && currentRoomX>0 && currentRoom.tiles[player.y/tileSize|0][tilePerRoom-1]===0){
+        currentRoomX--; currentRoom=rooms[currentRoomY][currentRoomX]; player.x=roomWidth-player.size-1; player.y=currentRoom.center.y*tileSize;
+    }
+    if(player.x>roomWidth-player.size && currentRoomX<roomCols-1 && currentRoom.tiles[player.y/tileSize|0][0]===0){
+        currentRoomX++; currentRoom=rooms[currentRoomY][currentRoomX]; player.x=1; player.y=currentRoom.center.y*tileSize;
+    }
+    if(player.y<0 && currentRoomY>0 && currentRoom.tiles[tilePerRoom-1][player.x/tileSize|0]===0){
+        currentRoomY--; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=roomHeight-player.size-1; player.x=currentRoom.center.x*tileSize;
+    }
+    if(player.y>roomHeight-player.size && currentRoomY<roomRows-1 && currentRoom.tiles[0][player.x/tileSize|0]===0){
+        currentRoomY++; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=1; player.x=currentRoom.center.x*tileSize;
+    }
 }
 
 // 控制、射擊、更新、繪製同前

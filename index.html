@@ -5,155 +5,128 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>dungeon</title>
   <style>
-    body {
-      margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      background: #f5f5f5;
-      font-family: Arial, sans-serif;
-    }
-    canvas {
-      border: 2px solid #222;
-      background: white;
-    }
+    body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f5f5f5; }
+    canvas { border:2px solid #222; background:#fff; }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const keys = {};
+let score = 0;
 
-  <script>
-    const canvas = document.getElementById(\"gameCanvas\");
-    const ctx = canvas.getContext(\"2d\");
+const player = { x: 100, y: 100, size: 30, speed: 4, hp: 100, attackRange: 80 };
+const room = { doors: [], obstacles: [], chests: [], enemies: [] };
 
-    const room = {
-      doors: [
-        { x: 370, y: 0, w: 60, h: 20 },
-        { x: 780, y: 270, w: 20, h: 60 }
-      ],
-      obstacles: [],
-      chests: [],
-      enemies: []
-    };
+function rectsCollide(a,b){
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
 
-    const player = {
-      x: 100, y: 100, size: 30, speed: 5, hp: 100, attackRange: 60
-    };
+function generateNewRoom(){
+  player.x = 100; player.y = 100;
+  room.doors = [{x:740,y:260,w:40,h:80}];
+  room.obstacles = [];
+  room.chests = [];
+  room.enemies = [];
 
-    const keys = {};
-    let score = 0;
+  for(let i=0;i<3;i++){
+    room.obstacles.push({x:180+i*150,y:120+Math.random()*300,w:60,h:60});
+  }
+  room.chests.push({x:650,y:100,w:30,h:30});
+  for(let i=0;i<2;i++){
+    room.enemies.push({x:450+i*80,y:350,w:30,h:30});
+  }
+}
 
-    document.addEventListener(\"keydown\", e => keys[e.key] = true);
-    document.addEventListener(\"keyup\", e => keys[e.key] = false);
-    canvas.addEventListener(\"click\", attack);
+function drawRoom(){
+  ctx.strokeRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='brown';
+  room.doors.forEach(d=>ctx.fillRect(d.x,d.y,d.w,d.h));
+  ctx.fillStyle='gray';
+  room.obstacles.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
+  ctx.fillStyle='gold';
+  room.chests.forEach(c=>ctx.fillRect(c.x,c.y,c.w,c.h));
+  ctx.fillStyle='red';
+  room.enemies.forEach(e=>ctx.fillRect(e.x,e.y,e.w,e.h));
+}
 
-    function rectsCollide(a, b) {
-      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function drawPlayer(){
+  ctx.fillStyle='black';
+  ctx.fillRect(player.x,player.y,player.size,player.size);
+  ctx.font='18px Arial';
+  ctx.fillText(`HP: ${Math.floor(player.hp)}  Score: ${score}`,10,25);
+}
+
+function movePlayer(){
+  let nx=player.x, ny=player.y;
+  if(keys['w']||keys['ArrowUp']) ny -= player.speed;
+  if(keys['s']||keys['ArrowDown']) ny += player.speed;
+  if(keys['a']||keys['ArrowLeft']) nx -= player.speed;
+  if(keys['d']||keys['ArrowRight']) nx += player.speed;
+
+  nx=Math.max(0,Math.min(canvas.width-player.size,nx));
+  ny=Math.max(0,Math.min(canvas.height-player.size,ny));
+
+  const future={x:nx,y:ny,w:player.size,h:player.size};
+  const blocked=room.obstacles.some(o=>rectsCollide(future,o));
+  if(!blocked){ player.x=nx; player.y=ny; }
+}
+
+function moveEnemies(){
+  room.enemies.forEach(e=>{
+    const dx=player.x-e.x, dy=player.y-e.y;
+    const dist=Math.hypot(dx,dy)||1;
+    e.x += dx/dist;
+    e.y += dy/dist;
+    if(rectsCollide({x:player.x,y:player.y,w:player.size,h:player.size},e)){
+      player.hp=Math.max(0,player.hp-0.1);
     }
+  });
+}
 
-    function generateNewRoom() {
-      player.x = 100; player.y = 100;
-      room.obstacles = Array.from({ length: 3 }, () => ({
-        x: Math.random() * 600 + 50,
-        y: Math.random() * 400 + 50,
-        w: 60, h: 60
-      }));
-      room.chests = [{ x: Math.random() * 700 + 20, y: Math.random() * 500 + 20, w: 30, h: 30 }];
-      room.enemies = Array.from({ length: 2 }, () => ({
-        x: Math.random() * 700 + 20,
-        y: Math.random() * 500 + 20,
-        w: 30, h: 30,
-        hp: 30
-      }));
-    }
+function collectChest(){
+  room.chests = room.chests.filter(c=>{
+    const hit = rectsCollide({x:player.x,y:player.y,w:player.size,h:player.size},c);
+    if(hit) score += 20;
+    return !hit;
+  });
+}
 
-    function drawRoom() {
-      ctx.strokeRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = \"brown\";
-      room.doors.forEach(d => ctx.fillRect(d.x, d.y, d.w, d.h));
-      ctx.fillStyle = \"gray\";
-      room.obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
-      ctx.fillStyle = \"gold\";
-      room.chests.forEach(c => ctx.fillRect(c.x, c.y, c.w, c.h));
-      ctx.fillStyle = \"red\";
-      room.enemies.forEach(e => ctx.fillRect(e.x, e.y, e.w, e.h));
-    }
-
-    function drawPlayer() {
-      ctx.fillStyle = \"black\";
-      ctx.fillRect(player.x, player.y, player.size, player.size);
-      ctx.fillText(`HP: ${player.hp}  Score: ${score}`, 10, 20);
-    }
-
-    function movePlayer() {
-      let newX = player.x, newY = player.y;
-      if (keys[\"ArrowUp\"] || keys[\"w\"]) newY -= player.speed;
-      if (keys[\"ArrowDown\"] || keys[\"s\"]) newY += player.speed;
-      if (keys[\"ArrowLeft\"] || keys[\"a\"]) newX -= player.speed;
-      if (keys[\"ArrowRight\"] || keys[\"d\"]) newX += player.speed;
-      newX = Math.max(0, Math.min(canvas.width - player.size, newX));
-      newY = Math.max(0, Math.min(canvas.height - player.size, newY));
-
-      const future = { x: newX, y: newY, w: player.size, h: player.size };
-      const hitObstacle = room.obstacles.some(obs => rectsCollide(future, obs));
-      if (!hitObstacle) { player.x = newX; player.y = newY; }
-    }
-
-    function moveEnemies() {
-      room.enemies.forEach(enemy => {
-        const dx = player.x - enemy.x;
-        const dy = player.y - enemy.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        enemy.x += dx / dist;
-        enemy.y += dy / dist;
-
-        if (rectsCollide({ x: player.x, y: player.y, w: player.size, h: player.size }, enemy)) {
-          player.hp = Math.max(0, player.hp - 0.1);
-        }
-      });
-    }
-
-    function attack() {
-      room.enemies = room.enemies.filter(enemy => {
-        const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
-        if (dist <= player.attackRange) {
-          score += 10;
-          return false;
-        }
-        return true;
-      });
-    }
-
-    function collectChest() {
-      room.chests = room.chests.filter(chest => {
-        const got = rectsCollide({ x: player.x, y: player.y, w: player.size, h: player.size }, chest);
-        if (got) score += 20;
-        return !got;
-      });
-    }
-
-    function checkDoorCollision() {
-      const p = { x: player.x, y: player.y, w: player.size, h: player.size };
-      if (room.doors.some(d => rectsCollide(p, d))) {
-        score += 5;
-        generateNewRoom();
-      }
-    }
-
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      movePlayer();
-      moveEnemies();
-      collectChest();
-      checkDoorCollision();
-      drawRoom();
-      drawPlayer();
-      requestAnimationFrame(gameLoop);
-    }
-
+function checkDoor(){
+  const p={x:player.x,y:player.y,w:player.size,h:player.size};
+  if(room.doors.some(d=>rectsCollide(p,d))){
+    score += 5;
     generateNewRoom();
-    gameLoop();
-  </script>
+  }
+}
+
+function attack(){
+  room.enemies = room.enemies.filter(e=>{
+    const dist=Math.hypot(player.x-e.x,player.y-e.y);
+    if(dist <= player.attackRange){ score += 10; return false; }
+    return true;
+  });
+}
+
+function gameLoop(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  movePlayer();
+  moveEnemies();
+  collectChest();
+  checkDoor();
+  drawRoom();
+  drawPlayer();
+  requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener('keydown',e=>keys[e.key]=true);
+document.addEventListener('keyup',e=>keys[e.key]=false);
+canvas.addEventListener('click',attack);
+
+generateNewRoom();
+gameLoop();
+</script>
 </body>
 </html>

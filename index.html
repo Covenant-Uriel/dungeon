@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>dungeon</title>
+<title>元氣騎士風格迷宮版</title>
 <style>
 body { margin:0; background:#222; font-family:sans-serif; overflow:hidden; }
 canvas { display:block; margin:auto; background:#333; }
@@ -56,7 +56,7 @@ for(let y=0;y<roomRows;y++){
     rooms[y]=[];
     for(let x=0;x<roomCols;x++){
         let tiles = generateMaze();
-        // 確保房門暢通
+        // 房間出口 (中間空格)
         if(x>0) tiles[Math.floor(tilePerRoom/2)][0]=0;
         if(x<roomCols-1) tiles[Math.floor(tilePerRoom/2)][tilePerRoom-1]=0;
         if(y>0) tiles[0][Math.floor(tilePerRoom/2)]=0;
@@ -151,8 +151,8 @@ function update(){
     if(keys['s']) ny+=player.speed;
     if(keys['a']) nx-=player.speed;
     if(keys['d']) nx+=player.speed;
-    if(!checkCollision(nx,player.y)) player.x=nx;
-    if(!checkCollision(player.x,ny)) player.y=ny;
+    if(!checkCollision(nx,player.y,player.size)) player.x=nx;
+    if(!checkCollision(player.x,ny,player.size)) player.y=ny;
 
     // 自動武器
     if(keys[' '] && player.weapon==='auto') shoot({clientX:player.x,clientY:player.y});
@@ -161,7 +161,7 @@ function update(){
     // 子彈
     player.bullets.forEach(b=>{ b.x+=b.dx; b.y+=b.dy; });
     // 子彈打牆消失
-    player.bullets = player.bullets.filter(b=>!checkCollision(b.x,b.y));
+    player.bullets = player.bullets.filter(b=>!checkCollision(b.x,b.y,2));
 
     // 打敵人
     player.bullets.forEach(b=>{
@@ -176,11 +176,11 @@ function update(){
     currentRoom.enemies.forEach(e=>{
         if(e.type==='chase'){
             let dx=player.x-e.x, dy=player.y-e.y, len=Math.sqrt(dx*dx+dy*dy);
-            if(len>0){ let tx=e.x+dx/len*e.speed, ty=e.y+dy/len*e.speed; if(!checkCollision(tx,e.y)) e.x=tx; if(!checkCollision(e.x,ty)) e.y=ty; }
+            if(len>0){ let tx=e.x+dx/len*e.speed, ty=e.y+dy/len*e.speed; if(!checkCollision(tx,e.y,e.size)) e.x=tx; if(!checkCollision(e.x,ty,e.size)) e.y=ty; }
         } else {
             if(e.moveTimer<=0){ e.moveDir={dx:(Math.random()-0.5)*2,dy:(Math.random()-0.5)*2}; e.moveTimer=30+Math.random()*60; }
             let tx=e.x+e.moveDir.dx*e.speed, ty=e.y+e.moveDir.dy*e.speed;
-            if(!checkCollision(tx,e.y)) e.x=tx; if(!checkCollision(e.x,ty)) e.y=ty;
+            if(!checkCollision(tx,e.y,e.size)) e.x=tx; if(!checkCollision(e.x,ty,e.size)) e.y=ty;
             e.moveTimer--;
         }
         if(e.x<player.x+player.size && e.x+e.size>player.x && e.y<player.y+player.size && e.y+e.size>player.y){ player.hp-=0.05; }
@@ -216,10 +216,16 @@ function enterRoom(){
     spawnItems(currentRoom);
 }
 
-function checkCollision(x,y){
-    let tx = Math.floor(x/tileSize), ty = Math.floor(y/tileSize);
-    if(tx<0 || tx>=tilePerRoom || ty<0 || ty>=tilePerRoom) return true;
-    return currentRoom.tiles[ty][tx]===1;
+function checkCollision(x,y,size){
+    let left=Math.floor(x/ tileSize), right=Math.floor((x+size-1)/tileSize);
+    let top=Math.floor(y/ tileSize), bottom=Math.floor((y+size-1)/tileSize);
+    for(let ty=top;ty<=bottom;ty++){
+        for(let tx=left;tx<=right;tx++){
+            if(tx<0 || tx>=tilePerRoom || ty<0 || ty>=tilePerRoom) return true;
+            if(currentRoom.tiles[ty][tx]===1) return true;
+        }
+    }
+    return false;
 }
 
 function draw(){
@@ -268,6 +274,7 @@ update();
 </script>
 </body>
 </html>
+
 </script>
 </body>
 </html>

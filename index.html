@@ -16,7 +16,6 @@ canvas { display:block; margin:auto; background:#333; }
 <div id="ui">HP: <span id="hp">10</span> | Weapon: <span id="weapon">Pistol</span></div>
 
 <script>
-// --- 設定 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const minimap = document.getElementById('minimap');
@@ -28,84 +27,89 @@ const roomCols = 4;
 const roomRows = 4;
 const tilePerRoom = 24;
 const tileSize = 24;
-const roomWidth = tilePerRoom * tileSize;
-const roomHeight = tilePerRoom * tileSize;
+const roomWidth = tilePerRoom*tileSize;
+const roomHeight = tilePerRoom*tileSize;
 
-// --- 地圖生成 ---
 let rooms = [];
+
+// --- 迷宮生成函數 ---
+function generateMaze(){
+    let maze = Array(tilePerRoom).fill(0).map(()=>Array(tilePerRoom).fill(1));
+    function carve(x,y){
+        maze[y][x]=0;
+        let dirs = [[0,-2],[2,0],[0,2],[-2,0]];
+        dirs.sort(()=>Math.random()-0.5);
+        dirs.forEach(d=>{
+            let nx=x+d[0], ny=y+d[1];
+            if(nx>0 && nx<tilePerRoom && ny>0 && ny<tilePerRoom && maze[ny][nx]===1){
+                maze[y+d[1]/2][x+d[0]/2]=0;
+                carve(nx,ny);
+            }
+        });
+    }
+    carve(1,1);
+    return maze;
+}
+
+// --- 房間生成 ---
 for(let y=0;y<roomRows;y++){
     rooms[y]=[];
     for(let x=0;x<roomCols;x++){
-        // 每個房間
-        let tiles=[];
-        for(let ty=0;ty<tilePerRoom;ty++){
-            tiles[ty]=[];
-            for(let tx=0;tx<tilePerRoom;tx++){
-                tiles[ty][tx]=Math.random()<0.2?1:0; // 0=地板,1=牆
-            }
-        }
-        // 房門
+        let tiles = generateMaze();
+        // 確保房門暢通
         if(x>0) tiles[Math.floor(tilePerRoom/2)][0]=0;
         if(x<roomCols-1) tiles[Math.floor(tilePerRoom/2)][tilePerRoom-1]=0;
         if(y>0) tiles[0][Math.floor(tilePerRoom/2)]=0;
         if(y<roomRows-1) tiles[tilePerRoom-1][Math.floor(tilePerRoom/2)]=0;
-
-        // 標記 Boss 房間
-        let isBoss = (x===roomCols-1 && y===roomRows-1);
-        rooms[y][x]={tiles, enemies:[], items:[], explored:false, isBoss};
+        rooms[y][x]={tiles,enemies:[],items:[],explored:false,isBoss:false};
     }
 }
 
-// --- 玩家 ---
-let player = {
-    x: roomWidth/2, y: roomHeight/2, size:20, color:'cyan',
-    speed:3, hp:10, weapon:'pistol', bullets:[], fireTimer:0
-};
+// --- 隨機 Boss 房間 ---
+let bossX = Math.floor(Math.random()*roomCols);
+let bossY = Math.floor(Math.random()*roomRows);
+rooms[bossY][bossX].isBoss=true;
 
-// --- 武器設定 ---
+// --- 玩家 ---
+let player = {x:roomWidth/2, y:roomHeight/2, size:20, color:'cyan', speed:3, hp:10, weapon:'pistol', bullets:[], fireTimer:0};
+
 const weapons={
     pistol:{rate:15, bullets:1, spread:0},
     shotgun:{rate:40, bullets:3, spread:0.3},
     auto:{rate:5, bullets:1, spread:0}
 };
 
-// --- 敵人 ---
+let currentRoomX=0, currentRoomY=0;
+let currentRoom = rooms[currentRoomY][currentRoomX];
+currentRoom.explored=true;
+
+// --- 敵人與道具 ---
 function spawnEnemies(room){
     room.enemies=[];
     let count = Math.floor(Math.random()*5)+3;
     for(let i=0;i<count;i++){
         let ex,ey;
-        do{
-            ex=Math.floor(Math.random()*tilePerRoom)*tileSize;
-            ey=Math.floor(Math.random()*tilePerRoom)*tileSize;
-        }while(room.tiles[Math.floor(ey/tileSize)][Math.floor(ex/tileSize)]===1);
+        do{ ex=Math.floor(Math.random()*tilePerRoom)*tileSize; ey=Math.floor(Math.random()*tilePerRoom)*tileSize; }
+        while(room.tiles[Math.floor(ey/tileSize)][Math.floor(ex/tileSize)]===1);
         let type = Math.random()<0.7?'chase':'random';
-        let hp = room.isBoss ? 10 : 3;
-        room.enemies.push({x:ex,y:ey,size:20,color:room.isBoss?'purple':'red',speed: type==='chase'?1.5:1,hp,type,moveTimer:0});
+        let hp = room.isBoss?10:3;
+        room.enemies.push({x:ex,y:ey,size:20,color:room.isBoss?'purple':'red',speed:type==='chase'?1.5:1,hp,type,moveTimer:0});
     }
 }
 
-// --- 道具 ---
 function spawnItems(room){
     room.items=[];
     let types=['heal','weapon'];
     for(let i=0;i<2;i++){
         let itx,ity;
-        do{
-            itx=Math.floor(Math.random()*tilePerRoom)*tileSize;
-            ity=Math.floor(Math.random()*tilePerRoom)*tileSize;
-        }while(room.tiles[Math.floor(ity/tileSize)][Math.floor(itx/tileSize)]===1);
+        do{ itx=Math.floor(Math.random()*tilePerRoom)*tileSize; ity=Math.floor(Math.random()*tilePerRoom)*tileSize; }
+        while(room.tiles[Math.floor(ity/tileSize)][Math.floor(itx/tileSize)]===1);
         room.items.push({x:itx,y:ity,size:16,type:types[Math.floor(Math.random()*2)]});
     }
 }
 
-// --- 當前房間 ---
-let currentRoomX=0;
-let currentRoomY=0;
-let currentRoom = rooms[currentRoomY][currentRoomX];
 spawnEnemies(currentRoom);
 spawnItems(currentRoom);
-currentRoom.explored=true;
 
 // --- 控制 ---
 let keys={};
@@ -113,14 +117,12 @@ document.addEventListener('keydown',e=>keys[e.key]=true);
 document.addEventListener('keyup',e=>keys[e.key]=false);
 canvas.addEventListener('mousedown',shoot);
 
-// 武器切換
 document.addEventListener('keydown', e=>{
     if(e.key==='1'){ player.weapon='pistol'; weaponDisplay.textContent='Pistol'; }
     if(e.key==='2'){ player.weapon='shotgun'; weaponDisplay.textContent='Shotgun'; }
     if(e.key==='3'){ player.weapon='auto'; weaponDisplay.textContent='Auto'; }
 });
 
-// --- 射擊 ---
 function shoot(e){
     if(player.fireTimer>0) return;
     let rect = canvas.getBoundingClientRect();
@@ -129,7 +131,7 @@ function shoot(e){
     let dx = mx - (player.x);
     let dy = my - (player.y);
     let len = Math.sqrt(dx*dx+dy*dy);
-    let w=weapons[player.weapon];
+    let w = weapons[player.weapon];
     for(let i=0;i<w.bullets;i++){
         let angle = Math.atan2(dy,dx);
         angle += (Math.random()-0.5)*w.spread;
@@ -138,24 +140,30 @@ function shoot(e){
     player.fireTimer = w.rate;
 }
 
-// --- 更新 ---
+// --- 遊戲更新 ---
+let gameOver=false;
 function update(){
-    // 玩家移動
-    if(keys['w'] && player.y-player.speed>0) player.y-=player.speed;
-    if(keys['s'] && player.y+player.speed+player.size<roomHeight) player.y+=player.speed;
-    if(keys['a'] && player.x-player.speed>0) player.x-=player.speed;
-    if(keys['d'] && player.x+player.speed+player.size<roomWidth) player.x+=player.speed;
+    if(gameOver) return;
 
-    // 自動武器射擊
+    // 玩家移動 + 碰撞牆
+    let nx=player.x, ny=player.y;
+    if(keys['w']) ny-=player.speed;
+    if(keys['s']) ny+=player.speed;
+    if(keys['a']) nx-=player.speed;
+    if(keys['d']) nx+=player.speed;
+    if(!checkCollision(nx,player.y)) player.x=nx;
+    if(!checkCollision(player.x,ny)) player.y=ny;
+
+    // 自動武器
     if(keys[' '] && player.weapon==='auto') shoot({clientX:player.x,clientY:player.y});
-
     if(player.fireTimer>0) player.fireTimer--;
 
-    // 子彈移動
+    // 子彈
     player.bullets.forEach(b=>{ b.x+=b.dx; b.y+=b.dy; });
-    player.bullets = player.bullets.filter(b=>b.x>0 && b.x<roomWidth && b.y>0 && b.y<roomHeight);
+    // 子彈打牆消失
+    player.bullets = player.bullets.filter(b=>!checkCollision(b.x,b.y));
 
-    // 子彈打敵人
+    // 打敵人
     player.bullets.forEach(b=>{
         currentRoom.enemies.forEach(e=>{
             if(b.x>e.x && b.x<e.x+e.size && b.y>e.y && b.y<e.y+e.size){ e.hp--; b.hit=true; }
@@ -164,30 +172,26 @@ function update(){
     player.bullets = player.bullets.filter(b=>!b.hit);
     currentRoom.enemies = currentRoom.enemies.filter(e=>e.hp>0);
 
-    // 敵人 AI
+    // 敵人AI +碰撞玩家
     currentRoom.enemies.forEach(e=>{
         if(e.type==='chase'){
             let dx=player.x-e.x, dy=player.y-e.y, len=Math.sqrt(dx*dx+dy*dy);
-            if(len>0){ e.x+=dx/len*e.speed; e.y+=dy/len*e.speed; }
+            if(len>0){ let tx=e.x+dx/len*e.speed, ty=e.y+dy/len*e.speed; if(!checkCollision(tx,e.y)) e.x=tx; if(!checkCollision(e.x,ty)) e.y=ty; }
         } else {
             if(e.moveTimer<=0){ e.moveDir={dx:(Math.random()-0.5)*2,dy:(Math.random()-0.5)*2}; e.moveTimer=30+Math.random()*60; }
-            e.x+=e.moveDir.dx*e.speed; e.y+=e.moveDir.dy*e.speed; e.moveTimer--;
+            let tx=e.x+e.moveDir.dx*e.speed, ty=e.y+e.moveDir.dy*e.speed;
+            if(!checkCollision(tx,e.y)) e.x=tx; if(!checkCollision(e.x,ty)) e.y=ty;
+            e.moveTimer--;
         }
-        // 碰撞玩家
-        if(e.x<player.x+player.size && e.x+e.size>player.x && e.y<player.y+player.size && e.y+e.size>player.y){
-            player.hp-=0.05;
-            if(player.hp<0) player.hp=0;
-        }
+        if(e.x<player.x+player.size && e.x+e.size>player.x && e.y<player.y+player.size && e.y+e.size>player.y){ player.hp-=0.05; }
     });
 
     // 撿道具
     currentRoom.items.forEach((it,i)=>{
         if(player.x<it.x+it.size && player.x+player.size>it.x && player.y<it.y+it.size && player.y+player.size>it.y){
             if(it.type==='heal') player.hp=Math.min(player.hp+3,10);
-            else{ 
-                player.weapon=['pistol','shotgun','auto'][Math.floor(Math.random()*3)]; 
-                weaponDisplay.textContent=player.weapon.charAt(0).toUpperCase()+player.weapon.slice(1);
-            }
+            else{ player.weapon=['pistol','shotgun','auto'][Math.floor(Math.random()*3)];
+                  weaponDisplay.textContent=player.weapon.charAt(0).toUpperCase()+player.weapon.slice(1); }
             currentRoom.items.splice(i,1);
         }
     });
@@ -197,6 +201,9 @@ function update(){
     if(player.x>roomWidth-player.size && currentRoomX<roomCols-1){ currentRoomX++; currentRoom=rooms[currentRoomY][currentRoomX]; player.x=0; enterRoom(); }
     if(player.y<0 && currentRoomY>0){ currentRoomY--; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=roomHeight-tileSize; enterRoom(); }
     if(player.y>roomHeight-player.size && currentRoomY<roomRows-1){ currentRoomY++; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=0; enterRoom(); }
+
+    // 血量歸零
+    if(player.hp<=0){ gameOver=true; drawGameOver(); return; }
 
     hpDisplay.textContent=Math.ceil(player.hp);
     draw();
@@ -209,37 +216,34 @@ function enterRoom(){
     spawnItems(currentRoom);
 }
 
-// --- 畫面 ---
+function checkCollision(x,y){
+    let tx = Math.floor(x/tileSize), ty = Math.floor(y/tileSize);
+    if(tx<0 || tx>=tilePerRoom || ty<0 || ty>=tilePerRoom) return true;
+    return currentRoom.tiles[ty][tx]===1;
+}
+
 function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // 地圖 tiles
+    // tiles
     for(let ty=0;ty<tilePerRoom;ty++){
         for(let tx=0;tx<tilePerRoom;tx++){
-            ctx.fillStyle = currentRoom.tiles[ty][tx]===1?'#555':'#222';
+            ctx.fillStyle=currentRoom.tiles[ty][tx]===1?'#555':'#222';
             ctx.fillRect(tx*tileSize, ty*tileSize, tileSize, tileSize);
         }
     }
 
     // 道具
-    currentRoom.items.forEach(it=>{
-        ctx.fillStyle = it.type==='heal'?'green':'orange';
-        ctx.fillRect(it.x,it.y,it.size,it.size);
-    });
+    currentRoom.items.forEach(it=>{ ctx.fillStyle=it.type==='heal'?'green':'orange'; ctx.fillRect(it.x,it.y,it.size,it.size); });
 
     // 玩家
-    ctx.fillStyle=player.color;
-    ctx.fillRect(player.x,player.y,player.size,player.size);
+    ctx.fillStyle=player.color; ctx.fillRect(player.x,player.y,player.size,player.size);
 
     // 敵人
-    currentRoom.enemies.forEach(e=>{
-        ctx.fillStyle=e.color;
-        ctx.fillRect(e.x,e.y,e.size,e.size);
-    });
+    currentRoom.enemies.forEach(e=>{ ctx.fillStyle=e.color; ctx.fillRect(e.x,e.y,e.size,e.size); });
 
     // 子彈
-    ctx.fillStyle='yellow';
-    player.bullets.forEach(b=>ctx.fillRect(b.x-2,b.y-2,4,4));
+    ctx.fillStyle='yellow'; player.bullets.forEach(b=>ctx.fillRect(b.x-2,b.y-2,4,4));
 
     // 小地圖
     miniCtx.clearRect(0,0,minimap.width,minimap.height);
@@ -248,18 +252,22 @@ function draw(){
             let room = rooms[ry][rx];
             miniCtx.fillStyle=room.explored?'gray':'#222';
             miniCtx.fillRect(rx*(minimap.width/roomCols), ry*(minimap.height/roomRows), minimap.width/roomCols, minimap.height/roomRows);
-            if(room.isBoss){
-                miniCtx.strokeStyle='red';
-                miniCtx.strokeRect(rx*(minimap.width/roomCols), ry*(minimap.height/roomRows), minimap.width/roomCols, minimap.height/roomRows);
-            }
+            if(room.isBoss){ miniCtx.strokeStyle='red'; miniCtx.strokeRect(rx*(minimap.width/roomCols), ry*(minimap.height/roomRows), minimap.width/roomCols, minimap.height/roomRows); }
         }
     }
-    // 玩家位置
     miniCtx.fillStyle='cyan';
     miniCtx.fillRect(currentRoomX*(minimap.width/roomCols), currentRoomY*(minimap.height/roomRows), minimap.width/roomCols, minimap.height/roomRows);
 }
 
+function drawGameOver(){
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='white'; ctx.font='48px sans-serif'; ctx.textAlign='center'; ctx.fillText('Game Over',canvas.width/2,canvas.height/2);
+}
+
 update();
+</script>
+</body>
+</html>
 </script>
 </body>
 </html>

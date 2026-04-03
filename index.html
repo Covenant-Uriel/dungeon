@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dungeon</title>
-  <style>
-    body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f5f5f5; }
-    canvas { border:2px solid #222; background:#fff; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>dungeon</title>
+<style>
+  body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f5f5f5; }
+  canvas { border:2px solid #222; background:#fff; }
+</style>
 </head>
 <body>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
@@ -16,59 +16,105 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const keys = {};
 let score = 0;
+const roomCountX = 5, roomCountY = 4;
+const rooms = [];
+let currentRoom = { x:0, y:0 };
+const visited = Array.from({length:roomCountY},()=>Array(roomCountX).fill(false));
 
 const player = { x: 100, y: 100, size: 30, speed: 4, hp: 100, attackRange: 80 };
-const room = { doors: [], obstacles: [], chests: [], enemies: [] };
 
-function rectsCollide(a,b){
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function rectsCollide(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+function generateAllRooms(){
+  for(let y=0;y<roomCountY;y++){
+    const row=[];
+    for(let x=0;x<roomCountX;x++){
+      const roomData = {
+        doors:[{x:740,y:260,w:40,h:80}],
+        obstacles:[],
+        chests:[],
+        enemies:[]
+      };
+      for(let i=0;i<3;i++) roomData.obstacles.push({x:180+i*150,y:120+Math.random()*300,w:60,h:60});
+      roomData.chests.push({x:650,y:100,w:30,h:30});
+      for(let i=0;i<2;i++) roomData.enemies.push({x:450+i*80,y:350,w:30,h:30});
+      row.push(roomData);
+    }
+    rooms.push(row);
+  }
 }
 
-function generateNewRoom(){
-  player.x = 100; player.y = 100;
-  room.doors = [{x:740,y:260,w:40,h:80}];
-  room.obstacles = [];
-  room.chests = [];
-  room.enemies = [];
+function loadRoom(){
+  const r = rooms[currentRoom.y][currentRoom.x];
+  room.doors = r.doors;
+  room.obstacles = r.obstacles;
+  room.chests = r.chests;
+  room.enemies = r.enemies;
+  player.x=100; player.y=100;
+  visited[currentRoom.y][currentRoom.x] = true;
+}
 
-  for(let i=0;i<3;i++){
-    room.obstacles.push({x:180+i*150,y:120+Math.random()*300,w:60,h:60});
+const room = { doors: [], obstacles: [], chests: [], enemies: [] };
+
+function drawBackground(){
+  const tileSize = 40;
+  for(let y=0;y<canvas.height;y+=tileSize){
+    for(let x=0;x<canvas.width;x+=tileSize){
+      const isDark = ((x/tileSize)+(y/tileSize))%2===0;
+      ctx.fillStyle = isDark ? '#d9d2c3' : '#c8c0ae';
+      ctx.fillRect(x,y,tileSize,tileSize);
+      ctx.strokeStyle='rgba(0,0,0,0.08)';
+      ctx.strokeRect(x,y,tileSize,tileSize);
+    }
   }
-  room.chests.push({x:650,y:100,w:30,h:30});
-  for(let i=0;i<2;i++){
-    room.enemies.push({x:450+i*80,y:350,w:30,h:30});
-  }
+}
+
+function drawWalls(){
+  const wall = 20;
+  ctx.fillStyle='#6e6253';
+  ctx.fillRect(0,0,canvas.width,wall);
+  ctx.fillRect(0,canvas.height-wall,canvas.width,wall);
+  ctx.fillRect(0,0,wall,canvas.height);
+  ctx.fillRect(canvas.width-wall,0,wall,canvas.height);
+  ctx.clearRect(canvas.width-wall,260,wall,80);
+  ctx.fillStyle='rgba(0,0,0,0.08)';
+  ctx.fillRect(wall,wall,canvas.width-wall*2,8);
 }
 
 function drawRoom(){
-  ctx.strokeRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle='brown';
-  room.doors.forEach(d=>ctx.fillRect(d.x,d.y,d.w,d.h));
-  ctx.fillStyle='gray';
-  room.obstacles.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
-  ctx.fillStyle='gold';
-  room.chests.forEach(c=>ctx.fillRect(c.x,c.y,c.w,c.h));
-  ctx.fillStyle='red';
-  room.enemies.forEach(e=>ctx.fillRect(e.x,e.y,e.w,e.h));
+  drawBackground();
+  drawWalls();
+  ctx.fillStyle='brown'; room.doors.forEach(d=>ctx.fillRect(d.x,d.y,d.w,d.h));
+  ctx.fillStyle='gray'; room.obstacles.forEach(o=>ctx.fillRect(o.x,o.y,o.w,o.h));
+  ctx.fillStyle='gold'; room.chests.forEach(c=>ctx.fillRect(c.x,c.y,c.w,c.h));
+  ctx.fillStyle='red'; room.enemies.forEach(e=>ctx.fillRect(e.x,e.y,e.w,e.h));
 }
 
 function drawPlayer(){
-  ctx.fillStyle='black';
-  ctx.fillRect(player.x,player.y,player.size,player.size);
-  ctx.font='18px Arial';
-  ctx.fillText(`HP: ${Math.floor(player.hp)}  Score: ${score}`,10,25);
+  ctx.fillStyle='black'; ctx.fillRect(player.x,player.y,player.size,player.size);
+  ctx.font='18px Arial'; ctx.fillText(`HP: ${Math.floor(player.hp)}  Score: ${score}`,10,25);
+}
+
+function drawMinimap(){
+  const mapSize = 150;
+  const cellW = mapSize/roomCountX, cellH = mapSize/roomCountY;
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(canvas.width-mapSize-10,10,mapSize,mapSize);
+  for(let y=0;y<roomCountY;y++){
+    for(let x=0;x<roomCountX;x++){
+      ctx.fillStyle = visited[y][x] ? 'lime' : 'rgba(255,255,255,0.2)';
+      ctx.fillRect(canvas.width-mapSize-10+x*cellW,10+y*cellH,cellW-2,cellH-2);
+    }
+  }
 }
 
 function movePlayer(){
-  let nx=player.x, ny=player.y;
-  if(keys['w']||keys['ArrowUp']) ny -= player.speed;
-  if(keys['s']||keys['ArrowDown']) ny += player.speed;
-  if(keys['a']||keys['ArrowLeft']) nx -= player.speed;
-  if(keys['d']||keys['ArrowRight']) nx += player.speed;
-
+  let nx=player.x,ny=player.y;
+  if(keys['w']||keys['ArrowUp']) ny-=player.speed;
+  if(keys['s']||keys['ArrowDown']) ny+=player.speed;
+  if(keys['a']||keys['ArrowLeft']) nx-=player.speed;
+  if(keys['d']||keys['ArrowRight']) nx+=player.speed;
   nx=Math.max(0,Math.min(canvas.width-player.size,nx));
   ny=Math.max(0,Math.min(canvas.height-player.size,ny));
-
   const future={x:nx,y:ny,w:player.size,h:player.size};
   const blocked=room.obstacles.some(o=>rectsCollide(future,o));
   if(!blocked){ player.x=nx; player.y=ny; }
@@ -78,46 +124,33 @@ function moveEnemies(){
   room.enemies.forEach(e=>{
     const dx=player.x-e.x, dy=player.y-e.y;
     const dist=Math.hypot(dx,dy)||1;
-    e.x += dx/dist;
-    e.y += dy/dist;
-    if(rectsCollide({x:player.x,y:player.y,w:player.size,h:player.size},e)){
-      player.hp=Math.max(0,player.hp-0.1);
-    }
+    e.x+=dx/dist; e.y+=dy/dist;
+    if(rectsCollide({x:player.x,y:player.y,w:player.size,h:player.size},e)){ player.hp=Math.max(0,player.hp-0.1); }
   });
 }
 
 function collectChest(){
-  room.chests = room.chests.filter(c=>{
-    const hit = rectsCollide({x:player.x,y:player.y,w:player.size,h:player.size},c);
-    if(hit) score += 20;
-    return !hit;
-  });
+  room.chests = room.chests.filter(c=>{ const hit=rectsCollide({x:player.x,y:player.y,w:player.size,h:player.size},c); if(hit) score+=20; return !hit; });
 }
 
 function checkDoor(){
   const p={x:player.x,y:player.y,w:player.size,h:player.size};
   if(room.doors.some(d=>rectsCollide(p,d))){
-    score += 5;
-    generateNewRoom();
+    score+=5;
+    currentRoom.x=(currentRoom.x+1)%roomCountX;
+    if(currentRoom.x===0) currentRoom.y=(currentRoom.y+1)%roomCountY;
+    loadRoom();
   }
 }
 
 function attack(){
-  room.enemies = room.enemies.filter(e=>{
-    const dist=Math.hypot(player.x-e.x,player.y-e.y);
-    if(dist <= player.attackRange){ score += 10; return false; }
-    return true;
-  });
+  room.enemies = room.enemies.filter(e=>{ const dist=Math.hypot(player.x-e.x,player.y-e.y); if(dist<=player.attackRange){ score+=10; return false; } return true; });
 }
 
 function gameLoop(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  movePlayer();
-  moveEnemies();
-  collectChest();
-  checkDoor();
-  drawRoom();
-  drawPlayer();
+  movePlayer(); moveEnemies(); collectChest(); checkDoor();
+  drawRoom(); drawPlayer(); drawMinimap();
   requestAnimationFrame(gameLoop);
 }
 
@@ -125,7 +158,8 @@ document.addEventListener('keydown',e=>keys[e.key]=true);
 document.addEventListener('keyup',e=>keys[e.key]=false);
 canvas.addEventListener('click',attack);
 
-generateNewRoom();
+generateAllRooms();
+loadRoom();
 gameLoop();
 </script>
 </body>

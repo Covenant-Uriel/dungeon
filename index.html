@@ -70,17 +70,21 @@ let bossX = Math.floor(Math.random()*roomCols);
 let bossY = Math.floor(Math.random()*roomRows);
 rooms[bossY][bossX].isBoss=true;
 
-// --- 玩家 ---
-let player = {x:roomWidth/2, y:roomHeight/2, size:20, color:'cyan', speed:3, hp:10, weapon:'pistol', bullets:[], fireTimer:0};
-
-const weapons={
-    pistol:{rate:15, bullets:1, spread:0},
-    shotgun:{rate:40, bullets:3, spread:0.3},
-    auto:{rate:5, bullets:1, spread:0}
-};
-
+// --- 玩家生成在安全位置 ---
 let currentRoomX=0, currentRoomY=0;
 let currentRoom = rooms[currentRoomY][currentRoomX];
+function getSafePosition(room){
+    let emptyTiles = [];
+    for(let y=0;y<tilePerRoom;y++){
+        for(let x=0;x<tilePerRoom;x++){
+            if(room.tiles[y][x]===0) emptyTiles.push({x,y});
+        }
+    }
+    let chosen = emptyTiles[Math.floor(Math.random()*emptyTiles.length)];
+    return {x:chosen.x*tileSize + tileSize/2 - 10, y:chosen.y*tileSize + tileSize/2 - 10};
+}
+let pos = getSafePosition(currentRoom);
+let player = {x:pos.x, y:pos.y, size:20, color:'cyan', speed:3, hp:10, weapon:'pistol', bullets:[], fireTimer:0};
 currentRoom.explored=true;
 
 // --- 敵人與道具 ---
@@ -131,7 +135,7 @@ function shoot(e){
     let dx = mx - (player.x);
     let dy = my - (player.y);
     let len = Math.sqrt(dx*dx+dy*dy);
-    let w = weapons[player.weapon];
+    let w = {pistol:{rate:15, bullets:1, spread:0},shotgun:{rate:40, bullets:3, spread:0.3},auto:{rate:5, bullets:1, spread:0}}[player.weapon];
     for(let i=0;i<w.bullets;i++){
         let angle = Math.atan2(dy,dx);
         angle += (Math.random()-0.5)*w.spread;
@@ -140,12 +144,11 @@ function shoot(e){
     player.fireTimer = w.rate;
 }
 
-// --- 遊戲更新 ---
+// --- 遊戲更新與繪製 ---
 let gameOver=false;
 function update(){
     if(gameOver) return;
 
-    // 玩家移動 + 碰撞牆
     let nx=player.x, ny=player.y;
     if(keys['w']) ny-=player.speed;
     if(keys['s']) ny+=player.speed;
@@ -154,16 +157,12 @@ function update(){
     if(!checkCollision(nx,player.y,player.size)) player.x=nx;
     if(!checkCollision(player.x,ny,player.size)) player.y=ny;
 
-    // 自動武器
     if(keys[' '] && player.weapon==='auto') shoot({clientX:player.x,clientY:player.y});
     if(player.fireTimer>0) player.fireTimer--;
 
-    // 子彈
     player.bullets.forEach(b=>{ b.x+=b.dx; b.y+=b.dy; });
-    // 子彈打牆消失
     player.bullets = player.bullets.filter(b=>!checkCollision(b.x,b.y,2));
 
-    // 打敵人
     player.bullets.forEach(b=>{
         currentRoom.enemies.forEach(e=>{
             if(b.x>e.x && b.x<e.x+e.size && b.y>e.y && b.y<e.y+e.size){ e.hp--; b.hit=true; }
@@ -172,7 +171,6 @@ function update(){
     player.bullets = player.bullets.filter(b=>!b.hit);
     currentRoom.enemies = currentRoom.enemies.filter(e=>e.hp>0);
 
-    // 敵人AI +碰撞玩家
     currentRoom.enemies.forEach(e=>{
         if(e.type==='chase'){
             let dx=player.x-e.x, dy=player.y-e.y, len=Math.sqrt(dx*dx+dy*dy);
@@ -186,7 +184,6 @@ function update(){
         if(e.x<player.x+player.size && e.x+e.size>player.x && e.y<player.y+player.size && e.y+e.size>player.y){ player.hp-=0.05; }
     });
 
-    // 撿道具
     currentRoom.items.forEach((it,i)=>{
         if(player.x<it.x+it.size && player.x+player.size>it.x && player.y<it.y+it.size && player.y+player.size>it.y){
             if(it.type==='heal') player.hp=Math.min(player.hp+3,10);
@@ -196,13 +193,11 @@ function update(){
         }
     });
 
-    // 房間切換
     if(player.x<0 && currentRoomX>0){ currentRoomX--; currentRoom=rooms[currentRoomY][currentRoomX]; player.x=roomWidth-tileSize; enterRoom(); }
     if(player.x>roomWidth-player.size && currentRoomX<roomCols-1){ currentRoomX++; currentRoom=rooms[currentRoomY][currentRoomX]; player.x=0; enterRoom(); }
     if(player.y<0 && currentRoomY>0){ currentRoomY--; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=roomHeight-tileSize; enterRoom(); }
     if(player.y>roomHeight-player.size && currentRoomY<roomRows-1){ currentRoomY++; currentRoom=rooms[currentRoomY][currentRoomX]; player.y=0; enterRoom(); }
 
-    // 血量歸零
     if(player.hp<=0){ gameOver=true; drawGameOver(); return; }
 
     hpDisplay.textContent=Math.ceil(player.hp);
@@ -214,6 +209,8 @@ function enterRoom(){
     currentRoom.explored=true;
     spawnEnemies(currentRoom);
     spawnItems(currentRoom);
+    let safePos = getSafePosition(currentRoom);
+    player.x = safePos.x; player.y = safePos.y;
 }
 
 function checkCollision(x,y,size){
@@ -230,28 +227,17 @@ function checkCollision(x,y,size){
 
 function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    // tiles
     for(let ty=0;ty<tilePerRoom;ty++){
         for(let tx=0;tx<tilePerRoom;tx++){
             ctx.fillStyle=currentRoom.tiles[ty][tx]===1?'#555':'#222';
             ctx.fillRect(tx*tileSize, ty*tileSize, tileSize, tileSize);
         }
     }
-
-    // 道具
     currentRoom.items.forEach(it=>{ ctx.fillStyle=it.type==='heal'?'green':'orange'; ctx.fillRect(it.x,it.y,it.size,it.size); });
-
-    // 玩家
     ctx.fillStyle=player.color; ctx.fillRect(player.x,player.y,player.size,player.size);
-
-    // 敵人
     currentRoom.enemies.forEach(e=>{ ctx.fillStyle=e.color; ctx.fillRect(e.x,e.y,e.size,e.size); });
-
-    // 子彈
     ctx.fillStyle='yellow'; player.bullets.forEach(b=>ctx.fillRect(b.x-2,b.y-2,4,4));
 
-    // 小地圖
     miniCtx.clearRect(0,0,minimap.width,minimap.height);
     for(let ry=0;ry<roomRows;ry++){
         for(let rx=0;rx<roomCols;rx++){
@@ -271,10 +257,6 @@ function drawGameOver(){
 }
 
 update();
-</script>
-</body>
-</html>
-
 </script>
 </body>
 </html>
